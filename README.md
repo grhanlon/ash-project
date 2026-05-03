@@ -153,7 +153,9 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 ## Install and run
 
-**macOS / Linux:** Prefer a virtual environment (see below). **Windows VDI:** use **`vdi/setup-venv.bat`** or **`vdi/setup-venv.ps1`** — they create **`.venv`** and install **`requirements.txt`**.
+**Windows:** Create **`.venv`** manually (see below) or run **`vdi/setup-venv.bat`** / **`vdi/setup-venv.ps1`** once — they create **`.venv`** and install **`requirements.txt`**.
+
+**macOS / Linux:** `python3 -m venv .venv`, then `source .venv/bin/activate`, then the same **`pip`** lines as below.
 
 Without a venv, from the repo root:
 
@@ -167,14 +169,26 @@ streamlit run app.py
 
 ---
 
-## Virtual environment (macOS / Linux)
+## Virtual environment (Windows)
 
-From the repository root (the folder that contains **`app.py`**):
+From the repository root (the folder that contains **`app.py`**), in **Command Prompt**:
 
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
+```bat
+py -3 -m venv .venv
+if errorlevel 1 python -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install xbbg
+```
+
+Or in **PowerShell** (if `Activate.ps1` is blocked, use **Cmd** + **`activate.bat`** above):
+
+```powershell
+py -3 -m venv .venv
+if (-not $?) { python -m venv .venv }
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install xbbg
 ```
