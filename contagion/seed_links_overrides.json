@@ -1,0 +1,11 @@
+{
+  "links": [
+    {
+      "announcer": "F US",
+      "peer": "TSLA US",
+      "relationship_type": "supplier",
+      "strength": "medium",
+      "evidence": "Desk mapping: EV OEM suppliers / battery-exposed peers (override demo)."
+    }
+  ]
+}

@@ -63,6 +63,31 @@ pip install xbbg
 
 `xbbg` is intentionally not in `requirements.txt` — it requires Bloomberg's `blpapi` shared library and is not always installable in CI environments. The codebase imports it lazily so tests run without it.
 
+## Read-through: supply-chain links (`relationship` not `unknown`)
+
+Expected read-through uses a small **seed map** (announcer → peer → relationship type). Only pairs in that map get `supplier`, `dealer_channel`, etc.; anything else falls back to **`unknown`** with low confidence.
+
+- **Built-in:** demo links for **F US** → LEA / APTV / BWA / AN (see `contagion/readthrough.py`).
+- **Your desk / VDI:** edit **`contagion/seed_links_overrides.json`** (or set env **`CONTAGION_SEED_LINKS_PATH`** to a JSON file elsewhere). Each entry:
+
+```json
+{
+  "links": [
+    {
+      "announcer": "F US",
+      "peer": "TSLA US",
+      "relationship_type": "supplier",
+      "strength": "medium",
+      "evidence": "Short note shown as evidence source."
+    }
+  ]
+}
+```
+
+Valid `relationship_type` values: `customer`, `supplier`, `dealer_channel`, `unknown`. Valid `strength`: `low`, `medium`, `high`. Overrides **merge** on top of the built-in map (override wins for the same pair).
+
+The repo includes an example row for **F US → TSLA US**; add more objects under `"links"` for other tickers.
+
 ## Run
 
 ```powershell
@@ -101,6 +126,8 @@ contagion/
   data.py                       BloombergAdapter, BloombergClient Protocol, live_bloomberg_client()
   analysis.py                   compute_beta, pick_earnings_reaction_day, compute_peer_stats
   report.py                     REPORT_COLUMNS, peer_stats_to_dataframe
+  readthrough.py                Supply-chain read-through rules + seed_links_overrides.json merge
+  seed_links_overrides.json     Announcer→peer relationship map (merged with built-in demo links)
 tests/
   test_models.py                Dataclass validation
   test_data.py                  BloombergAdapter against an injected FakeClient

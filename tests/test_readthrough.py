@@ -1,3 +1,5 @@
+import json
+
 from contagion.models import MissDriver, SupplyChainLink, ExpectedReadThrough
 from contagion.models import AnalysisRequest
 from contagion.readthrough import AUTO_DRIVER_LABELS, build_expected_readthrough, selected_drivers_from_names
@@ -186,6 +188,31 @@ def test_irrelevant_driver_link_is_kept_with_low_confidence_caveat():
     assert result[0].expected_magnitude == "low"
     assert result[0].confidence == "low"
     assert "weaker relationship" in " ".join(result[0].evidence).lower()
+
+
+def test_seed_links_overrides_json_maps_new_peer(monkeypatch, tmp_path):
+    payload = {
+        "links": [
+            {
+                "announcer": "GM US",
+                "peer": "RIVN US",
+                "relationship_type": "supplier",
+                "strength": "low",
+                "evidence": "test override",
+            }
+        ]
+    }
+    p = tmp_path / "ov.json"
+    p.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setenv("CONTAGION_SEED_LINKS_PATH", str(p))
+
+    request = AnalysisRequest("GM US", ["RIVN US"], None)
+    drivers = selected_drivers_from_names(["production_volume"])
+    result = build_expected_readthrough(request, drivers)
+
+    assert result[0].relationship_type == "supplier"
+    assert result[0].expected_direction == "negative"
+    assert "test override" in " ".join(result[0].evidence).lower()
 
 
 def test_unknown_link_uses_fallback_caveat_evidence_source():

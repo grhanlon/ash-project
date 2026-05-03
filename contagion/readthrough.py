@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 from contagion.models import AnalysisRequest, ExpectedReadThrough, MissDriver, SupplyChainLink, normalize_ticker
 
 
@@ -20,6 +24,73 @@ AUTO_SEED_LINKS = {
     ("F US", "BWA US"): ("supplier", "medium", "auto seed map"),
     ("F US", "AN US"): ("dealer_channel", "medium", "auto seed map"),
 }
+
+_DEFAULT_OVERRIDES_NAME = "seed_links_overrides.json"
+
+
+def _seed_overrides_path() -> Path | None:
+    """Optional JSON maintained on disk (e.g. VDI) — see seed_links_overrides.example.json."""
+    env = os.environ.get("CONTAGION_SEED_LINKS_PATH", "").strip()
+    if env:
+        p = Path(env).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(
+                f"CONTAGION_SEED_LINKS_PATH is set but file not found: {p}"
+            )
+        return p
+    p = Path(__file__).resolve().parent / _DEFAULT_OVERRIDES_NAME
+    return p if p.is_file() else None
+
+
+def parse_seed_link_overrides_payload(data: object) -> dict[tuple[str, str], tuple[str, str, str]]:
+    """Parse {\"links\": [...]} or a bare list; validates via SupplyChainLink."""
+    if isinstance(data, dict) and "links" in data:
+        items = data["links"]
+    elif isinstance(data, list):
+        items = data
+    else:
+        raise ValueError('expected a JSON list or an object with a "links" array')
+
+    if not isinstance(items, list):
+        raise ValueError('"links" must be an array')
+
+    out: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"links[{i}] must be an object")
+        try:
+            ann = item["announcer"]
+            peer = item["peer"]
+            rel = item["relationship_type"]
+            strength = item["strength"]
+        except KeyError as exc:
+            raise ValueError(f"links[{i}] missing required field: {exc}") from exc
+        evidence = item.get("evidence") or item.get("note") or "seed_links_overrides.json"
+        link = SupplyChainLink(ann, peer, rel, strength, str(evidence))
+        out[(link.source_ticker, link.target_ticker)] = (
+            link.relationship_type,
+            link.relationship_strength,
+            link.evidence_source,
+        )
+    return out
+
+
+def load_seed_link_overrides() -> dict[tuple[str, str], tuple[str, str, str]]:
+    path = _seed_overrides_path()
+    if path is None:
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON in {path}: {exc}") from exc
+    return parse_seed_link_overrides_payload(raw)
+
+
+def merged_seed_links() -> dict[tuple[str, str], tuple[str, str, str]]:
+    """Built-in Ford demo map plus optional seed_links_overrides.json (overrides win on key clash)."""
+    merged = dict(AUTO_SEED_LINKS)
+    merged.update(load_seed_link_overrides())
+    return merged
 
 DRIVER_RELATIONSHIP_FIT = {
     "production_volume": {
@@ -80,10 +151,14 @@ def selected_drivers_from_names(
     )
 
 
-def _link_for(source_ticker: str, target_ticker: str) -> SupplyChainLink:
+def _link_for(
+    source_ticker: str,
+    target_ticker: str,
+    seed_table: dict[tuple[str, str], tuple[str, str, str]],
+) -> SupplyChainLink:
     source = normalize_ticker(source_ticker)
     target = normalize_ticker(target_ticker)
-    relationship_type, relationship_strength, evidence_source = AUTO_SEED_LINKS.get(
+    relationship_type, relationship_strength, evidence_source = seed_table.get(
         (source, target),
         ("unknown", "low", "fallback caveat"),
     )
@@ -95,10 +170,11 @@ def build_expected_readthrough(
     drivers: list[MissDriver] | tuple[MissDriver, ...],
 ) -> tuple[ExpectedReadThrough, ...]:
     rows = []
+    seed_table = merged_seed_links()
     for driver in drivers:
         _validate_supported_driver(driver.driver)
         for target_ticker in request.portfolio_tickers:
-            link = _link_for(request.announcing_ticker, target_ticker)
+            link = _link_for(request.announcing_ticker, target_ticker, seed_table)
             fit = DRIVER_RELATIONSHIP_FIT.get(driver.driver, {}).get(link.relationship_type)
             if fit is None:
                 expected_direction = "mixed"
