@@ -24,12 +24,13 @@ def test_streamlit_app_labels_bloomberg_setup_errors():
     assert "Bloomberg data unavailable" in app_source
 
 
-def test_streamlit_app_has_dark_terminal_css():
+def test_streamlit_app_loads_pencil_tokens_and_theme():
     app_source = Path("app.py").read_text(encoding="utf-8")
+    theme_source = Path("contagion/pencil_design.py").read_text(encoding="utf-8")
 
+    assert "tokens_as_css_vars" in app_source
     assert "#0d1117" in app_source
-    assert "#161b22" in app_source
-    assert "#2dd4bf" in app_source
+    assert "#58a6ff" in theme_source
 
 
 def test_streamlit_app_has_custom_badge_helpers():
@@ -73,6 +74,6 @@ def test_streamlit_app_renders_readthrough_visualizations():
 
     assert "readthrough_visualization_dataframe" in app_source
     assert "readthrough_matrix_dataframe" in app_source
-    assert "Impact Ranking" in app_source
-    assert "Read-Through Matrix" in app_source
+    assert "Impact Ladder" in app_source
+    assert "Exposure Matrix" in app_source
     assert "st.altair_chart" in app_source

@@ -92,6 +92,15 @@ tests/
   test_report.py                Column layout, error-row rendering
   test_app_smoke.py             app.py imports cleanly and exposes main()
   conftest.py                   (intentionally minimal — fakes live next to their tests)
+design/
+  done.pen                      Pencil document; `variables` drive Streamlit + Next.js themes
+web/                            Next.js app for Vercel (`npm run dev` in `web/`)
+desktop/
+  launcher.py                   Starts Streamlit (used by PyInstaller / optional dev)
+  contagion.spec                PyInstaller build recipe → `dist/ContagionReadThrough.app`
+  requirements-build.txt        pyinstaller only (build machine)
+.streamlit/
+  config.toml                   Browser / server defaults for Streamlit
 docs/plans/
   2026-05-03-peer-readthrough-design.md         Approved design doc
   2026-05-03-peer-readthrough-implementation.md Task-by-task plan
@@ -112,3 +121,32 @@ All tests run offline against an injected `FakeClient` — no Bloomberg required
 - **Past earnings dates** are sourced via `bdh('ANNOUNCEMENT_DT', ...)` over a 3-year window. Bloomberg returns quarterly historical announcement dates as YYYYMMDD integers.
 - **All analysis is pure.** `analysis.py` takes an `AnalysisRequest` and any object satisfying the adapter interface, and returns an `AnalysisResult`. No I/O, no Streamlit, no globals.
 - **`PeerStat` enforces an invariant**: when `error` is non-None, every numeric field is `None`. Validated in `__post_init__`.
+
+## Web UI (Next.js on Vercel)
+
+The `web/` directory is a **Next.js** app meant for **Vercel**. On the server it reads `design/done.pen` and maps the Pencil **`variables`** object into CSS custom properties (`--pen-accent`, etc.). That is the supported way to “use” the `.pen` file on the web today: as **structured design tokens**, not as a live Pencil canvas (there is no first-party browser renderer for the full `.pen` scene graph).
+
+- **Local:** `cd web && npm install && npm run dev`
+- **Deploy:** In Vercel, set the project **Root Directory** to `web`. The repository is cloned in full, so `../design/done.pen` resolves during the build.
+- **Data:** `POST /api/analyze` returns **mock** JSON only. Real Bloomberg-backed peer stats still require the Python/Streamlit path (or a separate private backend with Terminal/`xbbg`).
+
+## Desktop app (PyInstaller, double-click for analysts)
+
+Build a **macOS `.app`** on your machine; hand analysts the zip — they open it like any app (no terminal).
+
+**You build once** (from `ash-project`, Python 3.11+ recommended, ideally the same env where Bloomberg + `xbbg` already work if you want those bundled):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -r desktop/requirements-build.txt
+# Optional: pip install xbbg   # if Terminal / blpapi are set up on the build machine
+pyinstaller desktop/contagion.spec
+```
+
+**Artifact:** `dist/ContagionReadThrough.app`. First launch on a Mac may need **Right-click → Open** (unsigned).
+
+**What it is:** the same **`streamlit run app.py`** UI, started by `desktop/launcher.py`. Bloomberg Terminal must still be logged in on that Mac for live data.
+
+**Windows:** run the same `pyinstaller desktop/contagion.spec` on Windows to get `dist/ContagionReadThrough/ContagionReadThrough.exe` (no `.app` bundle).

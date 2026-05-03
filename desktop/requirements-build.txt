@@ -1,0 +1,2 @@
+# Install only on the machine that builds the desktop bundle (not required for Streamlit-only users).
+pyinstaller>=6.0

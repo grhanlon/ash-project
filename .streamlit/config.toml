@@ -1,0 +1,6 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+# Desktop bundle; allow Streamlit to open the default browser automatically.
+headless = false
