@@ -165,13 +165,25 @@ streamlit run app.py
 
 ## Copy-paste: find this repo and run (Terminal)
 
-Use this when you are **anywhere inside the cloned folder** (or your shell’s current directory is the repo root). The script resolves the project root (via `git` or by walking up until it sees `app.py` + `contagion/`), installs deps, then starts Streamlit.
+Paste from **any directory**. The script:
+
+1. **Searches your home folder** (folders up to depth 8) for **`app.py`** inside a **git** repo that looks like this project — `origin` URL contains **`ash-project`**, or the tree has **`design/done.pen`** and **`contagion/readthrough.py`** (covers remotes removed or renamed folders).
+2. If that finds nothing, uses **the current repo** (`git rev-parse`) or **walks up** from `PWD` until it sees **`app.py`** + **`contagion/`**.
+
+Then it installs dependencies and runs Streamlit. The search can take a few seconds on a large home drive.
 
 **macOS / Linux (bash or zsh)** — paste the whole block:
 
 ```sh
 ROOT="" && \
-if git rev-parse --show-toplevel >/dev/null 2>&1; then
+while IFS= read -r -d '' f; do
+  d="$(dirname "$f")"
+  [ -d "$d/.git" ] && [ -d "$d/contagion" ] || continue
+  o="$(git -C "$d" remote get-url origin 2>/dev/null || true)"
+  case "$o" in *ash-project*) ROOT="$d"; break;; esac
+  [ -f "$d/design/done.pen" ] && [ -f "$d/contagion/readthrough.py" ] && { ROOT="$d"; break; }
+done < <(find "$HOME" -maxdepth 8 -type f -name app.py -print0 2>/dev/null) && \
+if [ -z "$ROOT" ] && git rev-parse --show-toplevel >/dev/null 2>&1; then
   CAND="$(git rev-parse --show-toplevel)"
   [ -f "$CAND/app.py" ] && [ -d "$CAND/contagion" ] && ROOT="$CAND"
 fi && \
@@ -183,12 +195,12 @@ if [ -z "$ROOT" ]; then
   done
 fi && \
 if [ -z "$ROOT" ]; then
-  echo "Could not find the project. Clone it, then re-run this block from inside the repo:"
+  echo "Could not find the project under $HOME (depth 8) or from here. Clone it, then re-run:"
   echo "  git clone https://github.com/grhanlon/ash-project.git"
   echo "  cd ash-project"
   exit 1
 fi && \
-cd "$ROOT" && \
+echo "Using repo: $ROOT" && cd "$ROOT" && \
 pip install -r requirements.txt && \
 pip install xbbg && \
 streamlit run app.py
@@ -198,9 +210,18 @@ streamlit run app.py
 
 ```powershell
 $root = $null
-$top = git rev-parse --show-toplevel 2>$null
-if ($LASTEXITCODE -eq 0 -and $top -and (Test-Path "$top\app.py") -and (Test-Path "$top\contagion")) {
-  $root = $top
+$home = $env:USERPROFILE
+foreach ($f in Get-ChildItem -Path $home -Recurse -Filter app.py -Depth 8 -ErrorAction SilentlyContinue) {
+  $dir = $f.DirectoryName
+  if (-not (Test-Path "$dir\.git")) { continue }
+  if (-not (Test-Path "$dir\contagion")) { continue }
+  $o = git -C $dir remote get-url origin 2>$null
+  if ($LASTEXITCODE -eq 0 -and $o -match 'ash-project') { $root = $dir; break }
+  if ((Test-Path "$dir\design\done.pen") -and (Test-Path "$dir\contagion\readthrough.py")) { $root = $dir; break }
+}
+if (-not $root) {
+  $top = git rev-parse --show-toplevel 2>$null
+  if ($LASTEXITCODE -eq 0 -and $top -and (Test-Path "$top\app.py") -and (Test-Path "$top\contagion")) { $root = $top }
 }
 if (-not $root) {
   $d = (Get-Location).Path
@@ -212,11 +233,12 @@ if (-not $root) {
   }
 }
 if (-not $root) {
-  Write-Host "Could not find the project. Clone it, then re-run from inside the repo:"
+  Write-Host "Could not find the project under $home (depth 8) or from here. Clone it, then re-run:"
   Write-Host "  git clone https://github.com/grhanlon/ash-project.git"
   Write-Host "  cd ash-project"
   exit 1
 }
+Write-Host "Using repo: $root"
 Set-Location $root
 pip install -r requirements.txt
 pip install xbbg
