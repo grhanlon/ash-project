@@ -130,13 +130,48 @@ You keep judgment; the UI avoids a fake single “score.”
 
 ---
 
-## How the numbers are computed (short)
+## How the numbers are computed (plain English)
 
-- **Beta** — OLS slope over aligned daily returns (~252 sessions); needs enough history and non-zero variance.
-- **Earnings reaction day** — For each announcement `d`, the day in `[d-1, d, d+1]` with the largest \|announcer return\| (handles BMO/AMC timing).
-- **Read-through** — **Not** from Bloomberg supply-chain feeds; it uses **`readthrough.py`** rules + **seed map** / overrides.
+The app shows **two different kinds of numbers**. Keeping them straight avoids mixing up “what the market did” with “what our rules suggest.”
 
-More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
+| Source | In one sentence |
+|--------|------------------|
+| **Peer statistics table** | **Historical market math** on Bloomberg prices: sensitivity to the announcer and to SPX, plus how the peer moved on past **earnings reaction days**. |
+| **Expected read-through** | **A structured desk view** from your driver choices and a **relationship map**—not a reopened model of the tape and **not** live supply-chain AI. |
+
+---
+
+### Peer statistics (Bloomberg path)
+
+**Daily returns** — We take **Bloomberg daily prices** for the announcer, each peer, and SPX, compute **one-day percent changes**, and only use **dates where both sides have data** so the series line up.
+
+**Beta vs announcer (and vs SPX)** — Plain idea: *when the reference (announcer or SPX) had a typical daily move, how much did this stock tend to move with it?*  
+We use about the **last 252 trading days** of aligned returns (roughly one trading year). The beta is the **standard slope** you get from regressing peer returns on the reference (same as covariance ÷ variance of the reference). You need **enough history**, and the reference needs to **actually vary**; otherwise beta stays empty and you may see an **error** on the row.
+
+**Earnings “reaction day”** — Prints happen **BMO or AMC**, so the important price move is not always the calendar **announcement date**. For each past earnings date we look at **three days**: the day **before**, **of**, and **after** the announcement, and pick the one where the **announcer’s absolute one-day return was largest**. That chosen day is the **reaction day** for that event.
+
+**Mean, median, hit rate, samples** — For up to **eight** recent announcer prints, we record the **peer’s return on each reaction day** (the same days we picked above).  
+- **Mean** and **median** summarize those peer moves (shown as **percent**-style numbers).  
+- **Hit rate** is **how often** the peer and announcer **both went up or both went down** on those reaction days.  
+- **Samples** is how many prints made it through with **usable data**; a low count means **don’t overfit** the history.
+
+**GICS** — **Sector, industry, and sub-industry** labels come from Bloomberg **GICS**. The **match** columns are simple **same bucket?** checks versus the announcer—**context**, not alpha.
+
+---
+
+### Expected read-through (rules + seed map)
+
+This part **does not recompute** betas or crawl prices again. It:
+
+1. Resolves **announcer → peer** using a **small built-in map** plus optional **`seed_links_overrides.json`** (relationship type and strength).
+2. Applies **fixed rules** that link the **miss drivers** you selected to those **relationship types**.
+3. Produces **direction, magnitude, and confidence** as **labeled outputs** you can **audit**—not a hidden 0–100 score.
+
+Pairs missing from the map show as **`unknown`** until someone adds an override.
+
+---
+
+**Technical design note:** `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 ---
 
