@@ -1,5 +1,11 @@
 # Contagion Read-Through (Peer Read-Through)
 
+## Executive summary
+
+A **single-screen workbench for earnings**: enter the announcing ticker, your book, and the miss drivers you care about. In one run it combines **Bloomberg-backed peer context** (sectors, betas, how names moved on the announcer’s past reaction days) with a **separate, rule-based expected read-through view** built from a **fixed desk relationship map**—not a composite score or live supply-chain AI. The product goal is **faster triage and explicit evidence** while the analyst **keeps judgment**. **Current delivery:** a **Streamlit** app for desks with Terminal on the same machine; a **Next.js demo** with mock data for UI sharing; **Windows VDI / desktop** launch paths. Live market data is **in scope only where Bloomberg Terminal and the Python API stack are installed correctly**.
+
+---
+
 **What this is:** A browser-based tool for equity analysts on an earnings print. It does two separate jobs in one screen:
 
 1. **Peer statistics (Bloomberg)** — For each name in your book, it pulls real **GICS**, **betas** (vs. the announcer and vs. SPX), and **how those peers moved on the announcer’s last few earnings reaction days**. All of that comes from **Bloomberg** on the machine where you run the app.
