@@ -1,74 +1,173 @@
-# Peer Read-Through
+# Contagion Read-Through (Peer Read-Through)
 
-A single-page Streamlit tool for an equity analyst: when a covered company reports earnings, show how each portfolio peer is statistically related to the announcer — without collapsing it into a single score.
+**What this is:** A browser-based tool for equity analysts on an earnings print. It does two separate jobs in one screen:
 
-The output is a transparent table of GICS overlap, 252-day betas (vs. the announcer and vs. SPX), and how each peer actually moved on the announcer's last 8 earnings reaction days.
+1. **Peer statistics (Bloomberg)** — For each name in your book, it pulls real **GICS**, **betas** (vs. the announcer and vs. SPX), and **how those peers moved on the announcer’s last few earnings reaction days**. All of that comes from **Bloomberg** on the machine where you run the app.
+
+2. **Expected read-through (rules + desk map)** — For miss drivers you select, it shows a **structured guess** of how portfolio names might read through (direction · magnitude · confidence). That part uses **fixed supply-chain relationships** (a seed map in code + optional **`seed_links_overrides.json`**), **not** live Bloomberg supply-chain AI.
+
+You judge the trade; the app lays out **inputs and caveats**, not a single hype score.
+
+---
+
+## What the code is doing (plain English)
+
+| Piece | Role |
+|--------|------|
+| **`app.py`** | Streamlit UI: forms, theme from `design/done.pen`, charts, tables. Orchestrates calls below. |
+| **`contagion/models.py`** | Data shapes: tickers, requests, peer rows, read-through rows (with validation). |
+| **`contagion/data.py`** | Talks to Bloomberg through a **`BloombergClient`** interface; **`BloombergAdapter`** turns API responses into profiles and price series. Tests use a fake client; production uses **`xbbg`** when you call `live_bloomberg_client()`. |
+| **`contagion/analysis.py`** | Pure math: beta regressions, picking the earnings **reaction day**, aggregating **peer stats** — no Streamlit, no network. |
+| **`contagion/readthrough.py`** | Maps **announcer → peer → relationship type** using a built-in demo map + **`seed_links_overrides.json`**, then applies **driver → relationship-type** rules for direction/magnitude. |
+| **`contagion/report.py`** | Builds the **DataFrames** / chart inputs the UI displays. |
+| **`contagion/pencil_design.py`** | Reads Pencil **`variables`** from `design/done.pen` for Streamlit CSS tokens. |
+
+---
+
+## Diagram: how the pieces connect
+
+```mermaid
+flowchart TB
+  subgraph analyst [Analyst]
+    BR[Browser on this PC or VDI]
+  end
+
+  subgraph ui [Streamlit UI]
+    APP[app.py]
+  end
+
+  subgraph core [Python package contagion]
+    M[models]
+    D[data.py BloombergAdapter]
+    A[analysis.py peer stats]
+    R[readthrough.py seed map]
+    P[report.py]
+    PEN[pencil_design.py tokens from done.pen]
+  end
+
+  subgraph bb [Bloomberg on same machine]
+    T[Terminal logged in]
+    X[xbbg blpapi]
+  end
+
+  BR <--> APP
+  APP --> PEN
+  APP --> M
+  APP --> D
+  APP --> A
+  APP --> R
+  APP --> P
+  D --> X
+  X --> T
+  A --> D
+  R --> M
+  A --> M
+  P --> APP
+```
+
+---
+
+## Diagram: what happens when you click *Run Analysis*
+
+```mermaid
+flowchart TD
+  S[Sidebar: announcer portfolio drivers commentary] --> RUN[Run Analysis]
+  RUN --> REQ[AnalysisRequest built]
+  REQ --> C1[compute_peer_stats + BloombergAdapter]
+  C1 --> PEER[Peer Statistics table betas GICS earnings history]
+  REQ --> C2[build_expected_readthrough]
+  MAP[Built-in seed map + seed_links_overrides.json] --> C2
+  C2 --> RT[Impact ladder matrix evidence rail trees]
+  PEER --> YOU[You interpret; tool does not pick the trade]
+  RT --> YOU
+```
+
+---
+
+## User walkthrough (first time)
+
+1. **Open the app** — Run `streamlit run app.py` (or the **VDI** `run-streamlit.bat`). Use the URL shown (often `http://127.0.0.1:8501`).
+2. **Left rail — scenario** — Enter the **announcing ticker** in Bloomberg form (`F US`, `MSFT US`, etc.). Leave **most recent earnings** checked, or set a specific date.
+3. **Portfolio** — Paste **one ticker per line** (your book).
+4. **Driver filters** — Pick one or more **miss drivers** (e.g. production volume). These only affect **expected read-through**, not the Bloomberg peer table.
+5. **Transcript buffer (optional)** — Paste a short excerpt; it is surfaced as context text, not an NLP engine.
+6. **Run Analysis** — Wait for the status steps (Bloomberg connect → peer stats → read-through build).
+7. **Read top to bottom**  
+   - **Expected read-through** — Chart/matrix/tree: *model* output from your drivers + desk seed map. Low-confidence rows are explicit.  
+   - **Peer statistics** — *Observed* stats from Bloomberg (subject to data and sample limits).
+8. **If a peer shows relationship `unknown`** — That pair is not in the seed map. Add it in **`contagion/seed_links_overrides.json`** (see below) or accept the low-confidence fallback.
+
+---
 
 ## What it answers
 
-> *"My announcer just printed. Which of my peers should I be paying attention to first, and is there any historical evidence they actually move with the announcer?"*
+> *“My announcer just printed. Which peers should I look at first, and is there any evidence they’ve moved with the announcer around past prints?”*
 
-The analyst, not the tool, makes the read-through call. The tool just lays out the evidence.
+You keep judgment; the UI avoids a fake single “score.”
 
-## What it shows
+---
 
-For an announcing company and a list of portfolio tickers, the table contains one row per peer with:
+## Peer statistics table (Bloomberg)
 
 | Column | Meaning |
-|---|---|
+|--------|---------|
 | Ticker / Name | Peer identity |
-| Sector / Industry / Sub-Industry | Peer's GICS classification |
-| Sector Match / Industry Match | True if peer shares GICS level with announcer |
-| Beta vs Announcer | OLS slope of peer daily returns on announcer daily returns, last ~252 trading days |
-| Beta vs SPX | Same, vs. SPX Index — distinguishes "moves with announcer" from "moves with the market" |
-| History Days | Trading days actually used in the beta regression |
-| Earnings-Day Mean / Median Return (%) | Peer's return on the announcer's last 8 earnings reaction days |
-| Hit Rate | Fraction of past earnings where peer moved in the same direction as announcer |
-| Samples | Number of past earnings dates that produced a usable peer return (≤8) |
-| Error | Populated only if the peer's data could not be fetched; row falls to the bottom |
+| Sector / Industry / Sub-Industry | GICS |
+| Sector / Industry Match | Overlap with announcer at that GICS level |
+| Beta vs Announcer | ~252d OLS vs announcer returns |
+| Beta vs SPX | ~252d OLS vs SPX (teases out market beta) |
+| History Days | Days used in the beta window |
+| Earnings-day mean/median | Peer return on announcer reaction days |
+| Hit Rate | Same-direction frequency across those events |
+| Samples | Count of usable events (≤8 by design) |
+| Error | Row-level failure (sorted to bottom) |
 
-The header shows the announcer name, the earnings date used, and the announcer's own event-window return.
+---
 
-## Design choices (what is *not* here)
+## How the numbers are computed (short)
 
-- **No composite score.** The previous version produced a single 0–100 number. It was thrown away — small samples and high collinearity between sector overlap, beta, and event response made it false precision. Analysts get the inputs and synthesize themselves.
-- **No "confidence" or "direction" labels.** Same reason.
-- **No persistence, notes, watchlists, multi-user features.** Single user, single process, fresh run on each input change.
-- **No fallback data source.** Bloomberg only.
-- **No caching.** Streamlit re-runs on each input change; Bloomberg latency is acceptable for ~10 tickers.
+- **Beta** — OLS slope over aligned daily returns (~252 sessions); needs enough history and non-zero variance.
+- **Earnings reaction day** — For each announcement `d`, the day in `[d-1, d, d+1]` with the largest \|announcer return\| (handles BMO/AMC timing).
+- **Read-through** — **Not** from Bloomberg supply-chain feeds; it uses **`readthrough.py`** rules + **seed map** / overrides.
 
-## How the numbers are computed
+More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
-- **Beta** — OLS slope of peer daily returns on reference daily returns over the trailing ~252 trading days. Aligned by intersecting trading dates. Returns `None` if fewer than 60 aligned days, or if reference return variance is zero.
-- **Earnings reaction day** — for each historical announcement date `d`, the day in `[d-1, d, d+1]` with the largest `|announcer return|`. Mitigates the BMO/AMC ambiguity (a 7am print's reaction is in `d`'s close-to-close return; a 4:30pm print's reaction is in `d+1`'s). Ties break toward the announcement day itself.
-- **Earnings-day stats** — for each announcer reaction day, look up the peer's same-day return. Mean, median, hit rate (same-sign agreement), and sample count are computed only over announcement dates that produced a usable peer return.
-- **Per-peer error isolation** — any failure pulling a peer's data becomes an error row at the bottom of the table; the rest of the analysis continues. An announcer-side failure aborts the whole run.
+---
 
-See `docs/plans/2026-05-03-peer-readthrough-design.md` for the design discussion (failure modes considered, alternatives rejected, why no composite score).
+## What is intentionally *not* here
+
+- No composite 0–100 “smart score.”
+- No separate database or multi-user sessions.
+- **No non-Bloomberg market feed** in the Streamlit path.
+- Read-through is **not** observed market reaction — copy in the app says so.
+
+---
 
 ## Requirements
 
-- Python 3.11+
-- Bloomberg Terminal running locally and logged in
-- `xbbg` (Python wrapper around blpapi)
+- **Python 3.11+** (avoid bleeding-edge 3.14 for `blpapi` unless your desk confirms support).
+- **Bloomberg Terminal** running and logged in on **the same machine** as the app.
+- **`pip install xbbg`** after `blpapi` works (firm-specific on Windows / VDI).
 
-This tool will not run on a machine without a live Bloomberg session.
+---
 
-## Install
+## Install and run
 
 ```powershell
 pip install -r requirements.txt
 pip install xbbg
+streamlit run app.py
 ```
 
-`xbbg` is intentionally not in `requirements.txt` — it requires Bloomberg's `blpapi` shared library and is not always installable in CI environments. The codebase imports it lazily so tests run without it.
+`xbbg` is not listed in `requirements.txt` so CI and dev machines without Terminal can still import and test with fakes.
 
-## Read-through: supply-chain links (`relationship` not `unknown`)
+---
 
-Expected read-through uses a small **seed map** (announcer → peer → relationship type). Only pairs in that map get `supplier`, `dealer_channel`, etc.; anything else falls back to **`unknown`** with low confidence.
+## Supply-chain seed map (`relationship` vs `unknown`)
 
-- **Built-in:** demo links for **F US** → LEA / APTV / BWA / AN (see `contagion/readthrough.py`).
-- **Your desk / VDI:** edit **`contagion/seed_links_overrides.json`** (or set env **`CONTAGION_SEED_LINKS_PATH`** to a JSON file elsewhere). Each entry:
+Expected read-through needs an **announcer → peer → relationship** (e.g. `supplier`). The app ships a **small demo map** (Ford → several autos names) and merges **`contagion/seed_links_overrides.json`**. Anything else is **`unknown`** until you add a row.
+
+**Override file shape:**
 
 ```json
 {
@@ -78,81 +177,58 @@ Expected read-through uses a small **seed map** (announcer → peer → relation
       "peer": "TSLA US",
       "relationship_type": "supplier",
       "strength": "medium",
-      "evidence": "Short note shown as evidence source."
+      "evidence": "Short note for the evidence column."
     }
   ]
 }
 ```
 
-Valid `relationship_type` values: `customer`, `supplier`, `dealer_channel`, `unknown`. Valid `strength`: `low`, `medium`, `high`. Overrides **merge** on top of the built-in map (override wins for the same pair).
+Allowed **`relationship_type`:** `customer`, `supplier`, `dealer_channel`, `unknown`. **`strength`:** `low`, `medium`, `high`.  
+Optional env: **`CONTAGION_SEED_LINKS_PATH`** → path to a JSON file outside the repo.
 
-The repo includes an example row for **F US → TSLA US**; add more objects under `"links"` for other tickers.
+---
 
-## Run
+## Windows VDI (Bloomberg on the same VM)
 
-```powershell
-streamlit run app.py
-```
+1. Copy or clone the repo onto the VDI (if GitHub is blocked, use a **zip** from someone who can clone).
+2. One-time: **`vdi/setup-venv.bat`** or **`powershell -ExecutionPolicy Bypass -File vdi\setup-venv.ps1`**
+3. **`pip install xbbg`** per your firm’s Bloomberg/Python setup.
+4. Each day: **`vdi/run-streamlit.bat`** or **`run-streamlit.ps1`**
+5. In the **VDI browser:** `http://127.0.0.1:8501` (Streamlit stays on localhost; see `.streamlit/config.toml`).
 
-In the sidebar:
-- Enter the announcing ticker in Bloomberg form (e.g. `F US`, `MSFT US`, `SPX Index`).
-- Leave **Use most recent earnings date** checked, or uncheck and pick a specific date for backtesting.
-- Paste your portfolio, one ticker per line.
-- Click **Run analysis**.
+---
 
-## Windows VDI (Bloomberg on the same machine)
+## Other ways to run (no live Bloomberg in the cloud app)
 
-Use this when analysts have a **Windows virtual desktop** with **Bloomberg Terminal** and **no installs from the public internet** — everything runs **inside the VDI**, not on Vercel.
+| Target | What you get |
+|--------|----------------|
+| **`web/`** | Next.js + **mock** `/api/analyze`. Good for **UI demos** on Vercel. Theme reads `design/done.pen` **variables** only. |
+| **`desktop/`** | PyInstaller bundle — same Streamlit app, **double-click** launcher. Still needs Terminal on that machine. |
 
-1. Copy or clone this repo onto the VDI (e.g. `git clone …` or zip from IT).
-2. **One-time setup** (needs Python 3.11+ on the image): double-click **`vdi/setup-venv.bat`** *or* run  
-   `powershell -ExecutionPolicy Bypass -File vdi\setup-venv.ps1`
-3. Install Bloomberg’s Python API per your firm (often **`pip install xbbg`** after Terminal/`blpapi` are on the PATH — confirm with IT).
-4. **Each session:** double-click **`vdi/run-streamlit.bat`** *or*  
-   `powershell -ExecutionPolicy Bypass -File vdi\run-streamlit.ps1`
-5. In the **VDI’s browser**, open **`http://127.0.0.1:8501`** (or the URL Streamlit prints). Stay on localhost — that keeps Bloomberg traffic on the VDI.
-
-`.streamlit/config.toml` binds Streamlit to **127.0.0.1:8501** so the server is not exposed to other machines on the network by default.
-
-**IT checklist (short):** Python 3.11+ · permission to create `.venv` · Bloomberg Terminal + API · outbound pip or internal package mirror · allow **local** HTTP to 127.0.0.1 in the VDI browser.
+---
 
 ## Project layout
 
 ```
-app.py                          Streamlit entry point — main() only, no module-level Streamlit calls
+app.py                    Streamlit entry
 contagion/
-  __init__.py                   Public exports: AnalysisRequest, AnalysisResult, PeerStat
-  models.py                     Frozen dataclasses + ticker normalization + invariants
-  data.py                       BloombergAdapter, BloombergClient Protocol, live_bloomberg_client()
-  analysis.py                   compute_beta, pick_earnings_reaction_day, compute_peer_stats
-  report.py                     REPORT_COLUMNS, peer_stats_to_dataframe
-  readthrough.py                Supply-chain read-through rules + seed_links_overrides.json merge
-  seed_links_overrides.json     Announcer→peer relationship map (merged with built-in demo links)
-tests/
-  test_models.py                Dataclass validation
-  test_data.py                  BloombergAdapter against an injected FakeClient
-  test_analysis.py              Beta, reaction-day, full aggregator with synthetic Bloomberg data
-  test_report.py                Column layout, error-row rendering
-  test_app_smoke.py             app.py imports cleanly and exposes main()
-  conftest.py                   (intentionally minimal — fakes live next to their tests)
-design/
-  done.pen                      Pencil document; `variables` drive Streamlit + Next.js themes
-web/                            Next.js app for Vercel (`npm run dev` in `web/`)
-desktop/
-  launcher.py                   Starts Streamlit (used by PyInstaller / optional dev)
-  contagion.spec                PyInstaller build recipe → `dist/ContagionReadThrough.app`
-  requirements-build.txt        pyinstaller only (build machine)
-.streamlit/
-  config.toml                   Streamlit server/browser defaults (incl. VDI bind 127.0.0.1:8501)
-vdi/
-  run-streamlit.bat             Windows: start Streamlit from repo root (uses .venv if present)
-  setup-venv.bat                Windows: create .venv and pip install requirements.txt
-  run-streamlit.ps1             PowerShell alternative if .bat is blocked
-  setup-venv.ps1                PowerShell one-time venv setup
-docs/plans/
-  2026-05-03-peer-readthrough-design.md         Approved design doc
-  2026-05-03-peer-readthrough-implementation.md Task-by-task plan
+  models.py               Requests, PeerStat, read-through types
+  data.py                 Bloomberg adapter + live client
+  analysis.py             Betas, reaction days, aggregator
+  readthrough.py          Seed map + overrides
+  report.py               Table/chart builders
+  pencil_design.py        Tokens from design/done.pen
+  seed_links_overrides.json
+design/done.pen           Pencil design tokens
+web/                      Next.js demo (Vercel)
+vdi/                      Windows launchers + venv setup
+desktop/                  PyInstaller spec + launcher
+tests/                    Pytest (fake Bloomberg; no Terminal)
+docs/plans/               Design notes
+.streamlit/config.toml    Server bind + browser options
 ```
+
+---
 
 ## Testing
 
@@ -160,41 +236,12 @@ docs/plans/
 pytest -q
 ```
 
-All tests run offline against an injected `FakeClient` — no Bloomberg required. The `live_bloomberg_client()` factory imports `xbbg` lazily, so the module is importable on a Bloomberg-free machine; only calling the factory triggers the import.
+Tests use a **`FakeClient`**, not Bloomberg. `live_bloomberg_client()` imports `xbbg` only when called.
+
+---
 
 ## Architecture notes
 
-- **`BloombergAdapter` takes a `BloombergClient` Protocol in its constructor.** Tests inject a `FakeClient`; production injects `live_bloomberg_client()`. The adapter never touches `xbbg` directly.
-- **`xbbg` 1.0.0 returns Narwhals-wrapped Arrow DataFrames in long format** (`[ticker, field, value]` for `bdp`, `[ticker, date, field, value]` for `bdh`). The `_XbbgClient` inside `live_bloomberg_client()` converts to pandas and pivots to the wide structures the adapter expects.
-- **Past earnings dates** are sourced via `bdh('ANNOUNCEMENT_DT', ...)` over a 3-year window. Bloomberg returns quarterly historical announcement dates as YYYYMMDD integers.
-- **All analysis is pure.** `analysis.py` takes an `AnalysisRequest` and any object satisfying the adapter interface, and returns an `AnalysisResult`. No I/O, no Streamlit, no globals.
-- **`PeerStat` enforces an invariant**: when `error` is non-None, every numeric field is `None`. Validated in `__post_init__`.
-
-## Web UI (Next.js on Vercel)
-
-The `web/` directory is a **Next.js** app meant for **Vercel**. On the server it reads `design/done.pen` and maps the Pencil **`variables`** object into CSS custom properties (`--pen-accent`, etc.). That is the supported way to “use” the `.pen` file on the web today: as **structured design tokens**, not as a live Pencil canvas (there is no first-party browser renderer for the full `.pen` scene graph).
-
-- **Local:** `cd web && npm install && npm run dev`
-- **Deploy:** In Vercel, set the project **Root Directory** to `web`. The repository is cloned in full, so `../design/done.pen` resolves during the build.
-- **Data:** `POST /api/analyze` returns **mock** JSON only. Real Bloomberg-backed peer stats still require the Python/Streamlit path (or a separate private backend with Terminal/`xbbg`).
-
-## Desktop app (PyInstaller, double-click for analysts)
-
-Build a **macOS `.app`** on your machine; hand analysts the zip — they open it like any app (no terminal).
-
-**You build once** (from `ash-project`, Python 3.11+ recommended, ideally the same env where Bloomberg + `xbbg` already work if you want those bundled):
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r desktop/requirements-build.txt
-# Optional: pip install xbbg   # if Terminal / blpapi are set up on the build machine
-pyinstaller desktop/contagion.spec
-```
-
-**Artifact:** `dist/ContagionReadThrough.app`. First launch on a Mac may need **Right-click → Open** (unsigned).
-
-**What it is:** the same **`streamlit run app.py`** UI, started by `desktop/launcher.py`. Bloomberg Terminal must still be logged in on that Mac for live data.
-
-**Windows:** run the same `pyinstaller desktop/contagion.spec` on Windows to get `dist/ContagionReadThrough/ContagionReadThrough.exe` (no `.app` bundle).
+- **`BloombergAdapter`** depends on a **`BloombergClient` protocol** — swap fake vs `xbbg` without changing `analysis.py`.
+- **`analysis.py`** is **pure**: `AnalysisRequest` + adapter-like object → **`AnalysisResult`**.
+- **`PeerStat`** enforces: if **`error`** is set, numeric fields are **`None`**.
