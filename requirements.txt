@@ -1,5 +1,7 @@
 streamlit>=1.35
 pandas>=2.2
 numpy>=1.26
-altair>=5.0
+# Altair 5.0–5.4 can fail import on Python 3.13+ (TypedDict/jsonschema chain); keep 5.5+.
+altair>=5.5.0
+jsonschema>=4.18.2
 pytest>=8.0

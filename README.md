@@ -148,6 +148,8 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 - **Python 3.11+** (avoid bleeding-edge 3.14 for `blpapi` unless your desk confirms support).
 - **Bloomberg Terminal** running and logged in on **the same machine** as the app.
 - **`pip install xbbg`** after `blpapi` works (firm-specific on Windows / VDI).
+- **Charts:** This repo pins **Altair 5.5+** and **jsonschema 4.18.2+**. If you see a traceback on **`import altair`** (often through **`jsonschema`**), upgrade deps: **`python -m pip install -U -r requirements.txt`** inside the same **`.venv`** you use to run the app.
+- **Run the UI with Streamlit**, not plain Python: **`python -m streamlit run app.py`** from the repo root (after **`pip install -r requirements.txt`**). Running **`python app.py`** will not start the server and can fail earlier on imports.
 
 ---
 
