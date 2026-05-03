@@ -2,5 +2,10 @@
 gatherUsageStats = false
 
 [server]
-# Desktop bundle; allow Streamlit to open the default browser automatically.
+# VDI / local: bind only on this machine; open http://127.0.0.1:8501 in the VDI browser.
+address = "127.0.0.1"
+port = 8501
+# Open browser tab automatically when possible (set true if your VDI has no default browser handler).
 headless = false
+enableCORS = false
+enableXsrfProtection = true

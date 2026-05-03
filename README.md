@@ -75,6 +75,22 @@ In the sidebar:
 - Paste your portfolio, one ticker per line.
 - Click **Run analysis**.
 
+## Windows VDI (Bloomberg on the same machine)
+
+Use this when analysts have a **Windows virtual desktop** with **Bloomberg Terminal** and **no installs from the public internet** — everything runs **inside the VDI**, not on Vercel.
+
+1. Copy or clone this repo onto the VDI (e.g. `git clone …` or zip from IT).
+2. **One-time setup** (needs Python 3.11+ on the image): double-click **`vdi/setup-venv.bat`** *or* run  
+   `powershell -ExecutionPolicy Bypass -File vdi\setup-venv.ps1`
+3. Install Bloomberg’s Python API per your firm (often **`pip install xbbg`** after Terminal/`blpapi` are on the PATH — confirm with IT).
+4. **Each session:** double-click **`vdi/run-streamlit.bat`** *or*  
+   `powershell -ExecutionPolicy Bypass -File vdi\run-streamlit.ps1`
+5. In the **VDI’s browser**, open **`http://127.0.0.1:8501`** (or the URL Streamlit prints). Stay on localhost — that keeps Bloomberg traffic on the VDI.
+
+`.streamlit/config.toml` binds Streamlit to **127.0.0.1:8501** so the server is not exposed to other machines on the network by default.
+
+**IT checklist (short):** Python 3.11+ · permission to create `.venv` · Bloomberg Terminal + API · outbound pip or internal package mirror · allow **local** HTTP to 127.0.0.1 in the VDI browser.
+
 ## Project layout
 
 ```
@@ -100,7 +116,12 @@ desktop/
   contagion.spec                PyInstaller build recipe → `dist/ContagionReadThrough.app`
   requirements-build.txt        pyinstaller only (build machine)
 .streamlit/
-  config.toml                   Browser / server defaults for Streamlit
+  config.toml                   Streamlit server/browser defaults (incl. VDI bind 127.0.0.1:8501)
+vdi/
+  run-streamlit.bat             Windows: start Streamlit from repo root (uses .venv if present)
+  setup-venv.bat                Windows: create .venv and pip install requirements.txt
+  run-streamlit.ps1             PowerShell alternative if .bat is blocked
+  setup-venv.ps1                PowerShell one-time venv setup
 docs/plans/
   2026-05-03-peer-readthrough-design.md         Approved design doc
   2026-05-03-peer-readthrough-implementation.md Task-by-task plan
