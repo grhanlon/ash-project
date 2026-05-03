@@ -86,7 +86,7 @@ flowchart TD
 
 ## User walkthrough (first time)
 
-1. **Open the app** — Run `streamlit run app.py` (or the **VDI** `run-streamlit.bat`). Use the URL shown (often `http://127.0.0.1:8501`).
+1. **Open the app** — Activate **`.venv`** if you use one, then run **`python -m streamlit run app.py`** from the repo root (or the **VDI** **`vdi/run-streamlit.bat`** / **`run-streamlit.ps1`**, which use **`.venv`** when present). Use the URL shown (often `http://127.0.0.1:8501`).
 2. **Left rail — scenario** — Enter the **announcing ticker** in Bloomberg form (`F US`, `MSFT US`, etc.). Leave **most recent earnings** checked, or set a specific date.
 3. **Portfolio** — Paste **one ticker per line** (your book).
 4. **Driver filters** — Pick one or more **miss drivers** (e.g. production volume). These only affect **expected read-through**, not the Bloomberg peer table.
@@ -153,17 +153,17 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 ## Install and run
 
-**Windows:** Create **`.venv`** manually (see below) or run **`vdi/setup-venv.bat`** / **`vdi/setup-venv.ps1`** once — they create **`.venv`** and install **`requirements.txt`**.
-
-**macOS / Linux:** `python3 -m venv .venv`, then `source .venv/bin/activate`, then the same **`pip`** lines as below.
+**Recommended:** Use a **virtual environment** (sections below). **Windows VDI shortcut:** **`vdi/setup-venv.bat`** or **`vdi/setup-venv.ps1`** creates **`.venv`** and runs **`pip install -r requirements.txt`**; you still add **`xbbg`** for Bloomberg.
 
 Without a venv, from the repo root:
 
 ```powershell
 pip install -r requirements.txt
 pip install xbbg
-streamlit run app.py
+python -m streamlit run app.py
 ```
+
+(`python -m streamlit` avoids PATH issues if the `streamlit` script is not on your shell’s path.)
 
 `xbbg` is not listed in `requirements.txt` so CI and dev machines without Terminal can still import and test with fakes.
 
@@ -180,6 +180,7 @@ if errorlevel 1 python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install xbbg
+python -m streamlit run app.py
 ```
 
 Or in **PowerShell** (if `Activate.ps1` is blocked, use **Cmd** + **`activate.bat`** above):
@@ -191,9 +192,27 @@ if (-not $?) { python -m venv .venv }
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install xbbg
+python -m streamlit run app.py
 ```
 
-Then run **`streamlit run app.py`**. When you are done, **`deactivate`**. The **`.venv/`** folder is listed in **`.gitignore`** and is not pushed to Git.
+When you are done, **`deactivate`**. The **`.venv/`** folder is listed in **`.gitignore`** and is not pushed to Git.
+
+---
+
+## Virtual environment (macOS / Linux)
+
+From the repository root:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install xbbg
+python -m streamlit run app.py
+```
+
+When you are done, **`deactivate`**.
 
 ---
 
@@ -204,7 +223,7 @@ Paste from **any directory**. The script:
 1. **Searches your home folder** (folders up to depth 8) for **`app.py`** inside a **git** repo that looks like this project — `origin` URL contains **`ash-project`**, or the tree has **`design/done.pen`** and **`contagion/readthrough.py`** (covers remotes removed or renamed folders).
 2. If that finds nothing, uses **the current repo** (`git rev-parse`) or **walks up** from `PWD` until it sees **`app.py`** + **`contagion/`**.
 
-Then it installs dependencies and runs Streamlit. The search can take a few seconds on a large home drive.
+Then it installs dependencies and runs Streamlit. If the repo already has **`.venv`**, it uses **`.venv/bin/python`** (Unix) or **`.venv\Scripts\python.exe`** (Windows) so you do not need to activate first. The search can take a few seconds on a large home drive.
 
 **macOS / Linux (bash or zsh)** — paste the whole block:
 
@@ -235,9 +254,13 @@ if [ -z "$ROOT" ]; then
   exit 1
 fi && \
 echo "Using repo: $ROOT" && cd "$ROOT" && \
-pip install -r requirements.txt && \
-pip install xbbg && \
-streamlit run app.py
+if [ -x "$ROOT/.venv/bin/python" ]; then \
+  "$ROOT/.venv/bin/python" -m pip install -r requirements.txt && \
+  "$ROOT/.venv/bin/python" -m pip install xbbg && \
+  "$ROOT/.venv/bin/python" -m streamlit run app.py; \
+else \
+  pip install -r requirements.txt && pip install xbbg && python -m streamlit run app.py; \
+fi
 ```
 
 **Windows (PowerShell)** — paste the whole block:
@@ -274,9 +297,16 @@ if (-not $root) {
 }
 Write-Host "Using repo: $root"
 Set-Location $root
-pip install -r requirements.txt
-pip install xbbg
-streamlit run app.py
+$pyExe = Join-Path $root ".venv\Scripts\python.exe"
+if (Test-Path $pyExe) {
+  & $pyExe -m pip install -r requirements.txt
+  & $pyExe -m pip install xbbg
+  & $pyExe -m streamlit run app.py
+} else {
+  pip install -r requirements.txt
+  pip install xbbg
+  python -m streamlit run app.py
+}
 ```
 
 If you have **never cloned** the repo, run this once first (then use either script from the new `ash-project` folder):
