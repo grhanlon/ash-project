@@ -153,6 +153,10 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 ## Install and run
 
+**macOS / Linux:** Prefer a virtual environment (see below). **Windows VDI:** use **`vdi/setup-venv.bat`** or **`vdi/setup-venv.ps1`** — they create **`.venv`** and install **`requirements.txt`**.
+
+Without a venv, from the repo root:
+
 ```powershell
 pip install -r requirements.txt
 pip install xbbg
@@ -160,6 +164,22 @@ streamlit run app.py
 ```
 
 `xbbg` is not listed in `requirements.txt` so CI and dev machines without Terminal can still import and test with fakes.
+
+---
+
+## Virtual environment (macOS / Linux)
+
+From the repository root (the folder that contains **`app.py`**):
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install xbbg
+```
+
+Then run **`streamlit run app.py`**. When you are done, **`deactivate`**. The **`.venv/`** folder is listed in **`.gitignore`** and is not pushed to Git.
 
 ---
 
