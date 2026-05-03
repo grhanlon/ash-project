@@ -163,6 +163,74 @@ streamlit run app.py
 
 ---
 
+## Copy-paste: find this repo and run (Terminal)
+
+Use this when you are **anywhere inside the cloned folder** (or your shell’s current directory is the repo root). The script resolves the project root (via `git` or by walking up until it sees `app.py` + `contagion/`), installs deps, then starts Streamlit.
+
+**macOS / Linux (bash or zsh)** — paste the whole block:
+
+```sh
+ROOT="" && \
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  CAND="$(git rev-parse --show-toplevel)"
+  [ -f "$CAND/app.py" ] && [ -d "$CAND/contagion" ] && ROOT="$CAND"
+fi && \
+if [ -z "$ROOT" ]; then
+  D="$PWD"
+  while [ "$D" != "/" ]; do
+    if [ -f "$D/app.py" ] && [ -d "$D/contagion" ]; then ROOT="$D"; break; fi
+    D="$(dirname "$D")"
+  done
+fi && \
+if [ -z "$ROOT" ]; then
+  echo "Could not find the project. Clone it, then re-run this block from inside the repo:"
+  echo "  git clone https://github.com/grhanlon/ash-project.git"
+  echo "  cd ash-project"
+  exit 1
+fi && \
+cd "$ROOT" && \
+pip install -r requirements.txt && \
+pip install xbbg && \
+streamlit run app.py
+```
+
+**Windows (PowerShell)** — paste the whole block:
+
+```powershell
+$root = $null
+$top = git rev-parse --show-toplevel 2>$null
+if ($LASTEXITCODE -eq 0 -and $top -and (Test-Path "$top\app.py") -and (Test-Path "$top\contagion")) {
+  $root = $top
+}
+if (-not $root) {
+  $d = (Get-Location).Path
+  while ($d) {
+    if ((Test-Path "$d\app.py") -and (Test-Path "$d\contagion")) { $root = $d; break }
+    $parent = Split-Path $d -Parent
+    if ($parent -eq $d) { break }
+    $d = $parent
+  }
+}
+if (-not $root) {
+  Write-Host "Could not find the project. Clone it, then re-run from inside the repo:"
+  Write-Host "  git clone https://github.com/grhanlon/ash-project.git"
+  Write-Host "  cd ash-project"
+  exit 1
+}
+Set-Location $root
+pip install -r requirements.txt
+pip install xbbg
+streamlit run app.py
+```
+
+If you have **never cloned** the repo, run this once first (then use either script from the new `ash-project` folder):
+
+```sh
+git clone https://github.com/grhanlon/ash-project.git && cd ash-project
+```
+
+---
+
 ## Supply-chain seed map (`relationship` vs `unknown`)
 
 Expected read-through needs an **announcer → peer → relationship** (e.g. `supplier`). The app ships a **small demo map** (Ford → several autos names) and merges **`contagion/seed_links_overrides.json`**. Anything else is **`unknown`** until you add a row.
