@@ -147,7 +147,7 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 - **Python 3.11+** (avoid bleeding-edge 3.14 for `blpapi` unless your desk confirms support).
 - **Bloomberg Terminal** running and logged in on **the same machine** as the app.
-- **`pip install xbbg`** after `blpapi` works (firm-specific on Windows / VDI).
+- **`blpapi` then `xbbg`** on Windows: install **`blpapi`** from Bloomberg’s index into the same **`.venv`** (see **Virtual environment (Windows)**). **`pip install xbbg` alone often causes `DLL load failed`**.
 - **Charts:** This repo pins **Altair 5.5+** and **jsonschema 4.18.2+**. If you see a traceback on **`import altair`** (often through **`jsonschema`**), upgrade deps: **`python -m pip install -U -r requirements.txt`** inside the same **`.venv`** you use to run the app.
 - **Run the UI with Streamlit**, not plain Python: **`python -m streamlit run app.py`** from the repo root (after **`pip install -r requirements.txt`**). Running **`python app.py`** will not start the server and can fail earlier on imports.
 
@@ -155,13 +155,14 @@ More design detail: `docs/plans/2026-05-03-peer-readthrough-design.md`.
 
 ## Install and run
 
-**Recommended:** Use a **virtual environment** (sections below). **Windows VDI shortcut:** **`vdi/setup-venv.bat`** or **`vdi/setup-venv.ps1`** creates **`.venv`** and runs **`pip install -r requirements.txt`**; you still add **`xbbg`** for Bloomberg.
+**Recommended:** Use a **virtual environment** (sections below). **Windows VDI shortcut:** **`vdi/setup-venv.bat`** or **`vdi/setup-venv.ps1`** creates **`.venv`** and runs **`pip install -r requirements.txt`**; you still install Bloomberg’s **`blpapi`** (see **Windows** venv section) and then **`xbbg`** on machines that use live data.
 
 Without a venv, from the repo root:
 
 ```powershell
 pip install -r requirements.txt
-pip install xbbg
+python -m pip install blpapi --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/
+python -m pip install xbbg
 python -m streamlit run app.py
 ```
 
@@ -173,6 +174,8 @@ python -m streamlit run app.py
 
 ## Virtual environment (Windows)
 
+`xbbg` needs Bloomberg’s **`blpapi`** native libraries. Install **`blpapi` from Bloomberg’s package index** into **the same `.venv`** before **`xbbg`**, or you may get **`DLL load failed while importing _core`** on every run.
+
 From the repository root (the folder that contains **`app.py`**), in **Command Prompt**:
 
 ```bat
@@ -181,7 +184,8 @@ if errorlevel 1 python -m venv .venv
 .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-pip install xbbg
+python -m pip install blpapi --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/
+python -m pip install xbbg
 python -m streamlit run app.py
 ```
 
@@ -193,9 +197,12 @@ if (-not $?) { python -m venv .venv }
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-pip install xbbg
+python -m pip install blpapi --index-url https://blpapi.bloomberg.com/repository/releases/python/simple/
+python -m pip install xbbg
 python -m streamlit run app.py
 ```
+
+**If `DLL load failed` / `_core` still appears:** use **64-bit Python** (match Bloomberg Terminal), prefer **Python 3.11 or 3.12** (very new Python may lack a `blpapi` wheel), and run the **`blpapi`** line again inside **this** venv. Terminal must be installed on the same machine if you rely on DAPI auto-detection; otherwise set **`BLPAPI_ROOT`** or use your firm’s SDK path per Bloomberg docs.
 
 When you are done, **`deactivate`**. The **`.venv/`** folder is listed in **`.gitignore`** and is not pushed to Git.
 
@@ -348,7 +355,7 @@ Optional env: **`CONTAGION_SEED_LINKS_PATH`** → path to a JSON file outside th
 
 1. Copy or clone the repo onto the VDI (if GitHub is blocked, use a **zip** from someone who can clone).
 2. One-time: **`vdi/setup-venv.bat`** or **`powershell -ExecutionPolicy Bypass -File vdi\setup-venv.ps1`**
-3. **`pip install xbbg`** per your firm’s Bloomberg/Python setup.
+3. In **`.venv`**, install Bloomberg **`blpapi`** then **`xbbg`** (see **Virtual environment (Windows)** for the exact **`pip`** command and **DLL** troubleshooting). Your firm may wrap this in an internal script.
 4. Each day: **`vdi/run-streamlit.bat`** or **`run-streamlit.ps1`**
 5. In the **VDI browser:** `http://127.0.0.1:8501` (Streamlit stays on localhost; see `.streamlit/config.toml`).
 
